@@ -355,7 +355,7 @@ func (p *Process) startCommand() {
     ticker := time.NewTicker(time.Hour * 1)
     go func() {
         for range ticker.C {
-            if time.Now().Hour() == 20 {
+            if time.Now().Hour() == 0 {
                 if p.OutputFile != nil {
                     p.OutputFile.Close()
                     p.OutputFile = nil
