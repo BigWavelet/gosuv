@@ -180,6 +180,32 @@ type Process struct {
 	mu sync.Mutex
 }
 
+
+// create log file every day
+func (p *Process) updateLogfile() { 
+    cmd := kexec.CommandString(p.Command)
+    // cmd := kexec.Command(p.Command[0], p.Command[1:]...)
+    logDir := filepath.Join(defaultConfigDir, "log", sanitize.Name(p.Name))
+    if !IsDir(logDir) {
+        os.MkdirAll(logDir, 0755)
+    }
+    var fout io.Writer
+    var err error
+    curYear, curMonth, curDay := time.Now().Date()
+    curHour, curMin, curSec := time.Now().Clock()
+    log.Print(curYear, curMonth, curDay, curHour, curMin, curSec)
+    p.OutputFile, err = os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%d-%d-%d-%d-%d-%d.log", curYear, curMonth, curDay, curHour, curMin, curSec)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        log.Warn("create stdout log failed:", err)
+        fout = ioutil.Discard
+    } else {
+        fout = p.OutputFile
+    }
+    cmd.Stdout = io.MultiWriter(p.Stdout, p.Output, fout)
+    cmd.Stderr = io.MultiWriter(p.Stderr, p.Output, fout)
+}
+
+
 // FIXME(ssx): maybe need to return error
 func (p *Process) buildCommand() *kexec.KCommand {
 	cmd := kexec.CommandString(p.Command)
@@ -190,7 +216,9 @@ func (p *Process) buildCommand() *kexec.KCommand {
 	}
 	var fout io.Writer
 	var err error
-	p.OutputFile, err = os.OpenFile(filepath.Join(logDir, "output.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    curYear, curMonth, curDay := time.Now().Date()
+    log.Print(curYear, curMonth, curDay)
+	p.OutputFile, err = os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%d-%d-%d.log", curYear, curMonth, curDay)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Warn("create stdout log failed:", err)
 		fout = ioutil.Discard
@@ -322,6 +350,20 @@ func (p *Process) startCommand() {
 			p.stopCommand() // clean up all process
 		}
 	}()
+
+
+    ticker := time.NewTicker(time.Hour * 1)
+    go func() {
+        for range ticker.C {
+            if time.Now().Hour() == 20 {
+                if p.OutputFile != nil {
+                    p.OutputFile.Close()
+                    p.OutputFile = nil
+                }
+                p.updateLogfile()
+            }
+        }
+    }()
 }
 
 func NewProcess(pg Program) *Process {
